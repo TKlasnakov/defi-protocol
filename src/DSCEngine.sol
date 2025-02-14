@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import { DecentralizedStableCoin } from "./DecentralizedStableCoin.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 /**
  * @title DSCEngine
@@ -23,8 +24,10 @@ contract DSCEngine is ReentrancyGuard {
 	error DSCEngine__TokenAddressesAndPriceFeedsAddressesMustBeTheSameLength();
 	error DSCEngine__TransferFaild();
 
-	mapping(address tolen => address priceFeed) private s_priceFeeds;
+	mapping(address token => address priceFeed) private s_priceFeeds;
 	mapping(address user => mapping(address token => uint256 amount)) private s_collateralDeposited;
+	mapping(address user => uint256 amountDscMinter) private s_amountDscMinted;
+	address[] private s_collateralTokens; 
 
 	DecentralizedStableCoin private immutable i_dsc;
 
@@ -52,6 +55,11 @@ contract DSCEngine is ReentrancyGuard {
 
 		if(tokenAddresses.length != priceFeedAddresses.length) {
 			revert DSCEngine__TokenAddressesAndPriceFeedsAddressesMustBeTheSameLength();
+		}
+
+		for(uint256 i = 0; i < tokenAddresses.length; i++) {
+			s_priceFeeds[tokenAddresses[i]] = priceFeedAddresses[i];
+			s_collateralTokens.push(tokenAddresses[i]);
 		}
 
 		i_dsc = DecentralizedStableCoin(dscAddress);
@@ -92,8 +100,8 @@ contract DSCEngine is ReentrancyGuard {
 
 	}
 
-	function mintDsc() external {
-		// Mint DSC
+	function mintDsc(uint256 _amountDscToMint) external moreThanZero(_amountDscToMint) nonReentrant {
+		s_amountDscMinted[msg.sender] += _amountDscToMint;
 	}
 
 	function burnDsc() external {
@@ -106,5 +114,34 @@ contract DSCEngine is ReentrancyGuard {
 	
 	function getHealtFactor() external view {
 		// Get health factor
+	}
+
+	function _getAccountInformationOfTheUser(address user) private view returns(uint256 totalDscMinted, uint256 collateralValueInUsd) {
+		totalDscMinted = s_amountDscMinted[user];
+		
+	}
+
+	/*
+	 * Return how close to liquidation a user is
+	 * If a user goes bellow 1, then they can get liquidated
+	 */
+	function _heltFactor() private view returns (uint256) {
+		
+	}
+
+	function _revertIfHeltFactorIsBroken() internal view {
+		
+
+	}
+
+	function getAccountCollateralValue(address user) public view returns(uint256) {
+		for(uint256 i = 0; i < s_collateralTokens.length; i++) {
+			address token = s_collateralTokens[i];
+			uint256 amount = s_collateralDeposited[user][token];
+		}
+	}
+
+	function getTokenUsdValue(address token, uint256 amount) public view returns(uint256) {
+		
 	}
 }
