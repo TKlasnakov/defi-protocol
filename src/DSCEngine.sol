@@ -26,7 +26,7 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine__MintFailed();
 
     uint256 private constant ADDITIONAL_FEE_PRECISION = 1e10;
-    uint256 private constant PRECISION = 1e16;
+    uint256 private constant PRECISION = 1e18;
     uint256 private constant LIQUDITION_THRESHOLD = 50;
     uint256 private constant LIQUDITION_PRECISION = 100;
     uint8 private constant MIN_HELT_FACTOR = 1;
@@ -163,6 +163,6 @@ contract DSCEngine is ReentrancyGuard {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[_token]);
         (, int256 price,,,) = priceFeed.latestRoundData();
 
-        return ((uint256(price) * ADDITIONAL_FEE_PRECISION) * 10) / PRECISION;
+        return ((uint256(price) * ADDITIONAL_FEE_PRECISION) * _amount) / PRECISION;
     }
 }
