@@ -26,12 +26,13 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine__MintFailed();
 		error DSCEngine__TransferFailed();
 		error DSCEngine__HealthFactorOk();
+		error DSCEngine__HealthFactorNotImproved();
 
     uint256 private constant ADDITIONAL_FEE_PRECISION = 1e10;
     uint256 private constant PRECISION = 1e18;
     uint256 private constant LIQUDITION_THRESHOLD = 50;
     uint256 private constant LIQUDITION_PRECISION = 100;
-    uint8 private constant MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant MIN_HEALTH_FACTOR = 1e18;
 		uint256 private constant LIQUIDATOR_BONUS = 10;
 
     mapping(address token => address priceFeed) private s_priceFeeds;
@@ -42,7 +43,7 @@ contract DSCEngine is ReentrancyGuard {
     DecentralizedStableCoin private immutable i_dsc;
 
     event CollateralDeposited(address indexed user, address indexed token, uint256 amount);
-		event CollateralRedeemed(address indexed user, address indexed token, uint256 amount);
+		event CollateralRedeemed(address indexed redeemedFrom, address redeemedTo, address indexed token, uint256 amount);
 
     modifier moreThanZero(uint256 _amount) {
         if (_amount <= 0) {
@@ -114,25 +115,18 @@ contract DSCEngine is ReentrancyGuard {
 			redeemCollateral(_tokenCollateralAddress, _amountCollateral);
     }
 
-    function redeemCollateral(address _tokenCollateralAddress, uint256 _amountCollateral) 
+		function redeemCollateral(address _tokenCollateralAddress, uint256 _amountCollateral) 
 			public 
-			moreThanZero(_amountCollateral)
+			moreThanZero(_amountCollateral) 
 			nonReentrant {
-				s_collateralDeposited[msg.sender][_tokenCollateralAddress] -= _amountCollateral;
-				emit CollateralRedeemed(msg.sender, _tokenCollateralAddress, _amountCollateral);
-
-				bool success = IERC20(_tokenCollateralAddress).transfer(msg.sender, _amountCollateral);
-
-				if (!success) {
-					revert DSCEngine__TransferFailed();
-				}
-
-				_revertIfHeltFactorIsBroken(msg.sender);
+				_redeemCollateral(msg.sender, msg.sender, _tokenCollateralAddress, _amountCollateral);
+				_revertIfHealthFactorIsBroken(msg.sender);
 			}
+
 
     function mintDsc(uint256 _amountDscToMint) public moreThanZero(_amountDscToMint) nonReentrant {
         s_amountDscMinted[msg.sender] += _amountDscToMint;
-        _revertIfHeltFactorIsBroken(msg.sender);
+        _revertIfHealthFactorIsBroken(msg.sender);
         bool minted = i_dsc.mint(msg.sender, _amountDscToMint);
 
         if (!minted) {
@@ -141,15 +135,8 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function burnDsc(uint256 _amount) public moreThanZero(_amount) {
-			s_amountDscMinted[msg.sender] -= _amount;
-			bool success = i_dsc.transferFrom(msg.sender, address(this), _amount);
-
-			if (!success) {
-				revert DSCEngine__TransferFailed();
-			}
-
-			i_dsc.burn(_amount);
-			_revertIfHeltFactorIsBroken(msg.sender);
+			_burnDsc(_amount, msg.sender, msg.sender);
+			_revertIfHealthFactorIsBroken(msg.sender);
     }
 
 		/*
@@ -158,7 +145,7 @@ contract DSCEngine is ReentrancyGuard {
 		 * @param _debtToCover - Amount of DSC you want to burn to improve the users helth factor
 		 */
     function liquidate(address _collateral, address _user, uint256 _debtToCover) external moreThanZero(_debtToCover) nonReentrant {
-			uint256 startingUserHealtFactor = _heltFactor(_user);
+			uint256 startingUserHealtFactor = _healthFactor(_user);
 			if (startingUserHealtFactor >= MIN_HEALTH_FACTOR) {
 				revert DSCEngine__HealthFactorOk();
 			}
@@ -166,6 +153,16 @@ contract DSCEngine is ReentrancyGuard {
 			uint256 tokenAmountFromDebtCovered = getTokenAmountFromUsd(_collateral, _debtToCover);
 			uint256 bonusCollateral = (tokenAmountFromDebtCovered * LIQUIDATOR_BONUS) / LIQUDITION_PRECISION;
 			uint256 totalCollateralToRedeem = tokenAmountFromDebtCovered + bonusCollateral;
+			_redeemCollateral(_user, msg.sender, _collateral, totalCollateralToRedeem);
+			_burnDsc(_debtToCover, _user, msg.sender);
+			
+			uint256 endingUserHealthFactor = _healthFactor(_user);
+
+			if (endingUserHealthFactor <= startingUserHealtFactor) {
+				revert DSCEngine__HealthFactorNotImproved();
+			}
+
+			_revertIfHealthFactorIsBroken(msg.sender);
     }
 
     function getHealtFactor() external view {
@@ -175,25 +172,55 @@ contract DSCEngine is ReentrancyGuard {
     function _getAccountInformationOfTheUser(address _user)
         private
         view
-        returns (uint256 totalDscMinted, uint256 collateralValueInUsd)
-    {
+        returns (uint256 totalDscMinted, uint256 collateralValueInUsd) {
         totalDscMinted = s_amountDscMinted[_user];
         collateralValueInUsd = getAccountCollateralValue(_user);
     }
+
+		function _burnDsc(uint256 _amount, address _onBehalfOf, address _dscFrom) 
+			private 
+			moreThanZero(_amount) 
+			nonReentrant {
+				s_amountDscMinted[_onBehalfOf] -= _amount;
+				bool success = i_dsc.transferFrom(_dscFrom, address(this), _amount);
+
+				if (!success) {
+					revert DSCEngine__TransferFailed();
+				}
+
+				i_dsc.burn(_amount);
+				_revertIfHealthFactorIsBroken(msg.sender);
+		}
+
+    function _redeemCollateral(address _from, address _to, address _tokenCollateralAddress, uint256 _amountCollateral) 
+			private 
+			moreThanZero(_amountCollateral)
+			nonReentrant {
+				s_collateralDeposited[_from][_tokenCollateralAddress] -= _amountCollateral;
+				emit CollateralRedeemed(_from, _to, _tokenCollateralAddress, _amountCollateral);
+
+				bool success = IERC20(_tokenCollateralAddress).transfer(_to, _amountCollateral);
+
+				if (!success) {
+					revert DSCEngine__TransferFailed();
+				}
+
+				_revertIfHealthFactorIsBroken(msg.sender);
+			}
 
     /*
     * Return how close to liquidation a user is
     * If a user goes bellow 1, then they can get liquidated
     */
-    function _heltFactor(address _user) private view returns (uint256) {
+    function _healthFactor(address _user) private view returns (uint256) {
         (uint256 totalDscMinted, uint256 collateralValueInUsd) = _getAccountInformationOfTheUser(_user);
         uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUDITION_THRESHOLD) / LIQUDITION_PRECISION;
 
         return (collateralAdjustedForThreshold * PRECISION) / totalDscMinted;
     }
 
-    function _revertIfHeltFactorIsBroken(address _user) internal view {
-        uint256 userHeltFactor = _heltFactor(_user);
+    function _revertIfHealthFactorIsBroken(address _user) internal view {
+        uint256 userHeltFactor = _healthFactor(_user);
 
         if (userHeltFactor < MIN_HEALTH_FACTOR) {
             revert DSCEngine__BreaksHeltFactor(userHeltFactor);
