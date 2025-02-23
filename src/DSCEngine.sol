@@ -27,6 +27,7 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine__TransferFailed();
     error DSCEngine__HealthFactorOk();
     error DSCEngine__HealthFactorNotImproved();
+		error DSCEngine__MustHaveMintedDsc();
 
     uint256 private constant ADDITIONAL_FEE_PRECISION = 1e10;
     uint256 private constant PRECISION = 1e18;
@@ -175,9 +176,6 @@ contract DSCEngine is ReentrancyGuard {
         _revertIfHealthFactorIsBroken(msg.sender);
     }
 
-    function getHealtFactor() external view {
-        // Get health factor
-    }
 
     function _getAccountInformationOfTheUser(address _user)
         private
@@ -227,6 +225,10 @@ contract DSCEngine is ReentrancyGuard {
     */
     function _healthFactor(address _user) private view returns (uint256) {
         (uint256 totalDscMinted, uint256 collateralValueInUsd) = _getAccountInformationOfTheUser(_user);
+				
+				if (totalDscMinted == 0) {
+					revert DSCEngine__MustHaveMintedDsc();
+				}
         uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUDITION_THRESHOLD) / LIQUDITION_PRECISION;
 
         return (collateralAdjustedForThreshold * PRECISION) / totalDscMinted;
@@ -267,4 +269,8 @@ contract DSCEngine is ReentrancyGuard {
 		function getAccountInformation(address _user) public view returns (uint256 totalDscMinted, uint256 collateralValueInUsd) {
 			(totalDscMinted, collateralValueInUsd) = _getAccountInformationOfTheUser(_user);
 		}
+
+    function getHealthFactor(address _user) public view returns (uint256) {
+			return _healthFactor(_user);
+    }
 }

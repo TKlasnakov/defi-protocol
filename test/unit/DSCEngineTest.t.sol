@@ -17,7 +17,16 @@ contract DSCEngineTest is Test {
 
     address public USER = makeAddr("user");
     uint256 public constant AMOUNT_COLLATERAL = 10 ether;
+		uint256 public constant AMOUNT_DSC_MINTED = 100;
     uint256 public constant STARTING_ERC20_BALANCE = 10 ether;
+
+		modifier depositedCollateral() {
+			vm.startPrank(USER);
+			ERC20Mock(weth).approve(address(dscEngine), AMOUNT_COLLATERAL);
+			dscEngine.depositCollateral(weth, AMOUNT_COLLATERAL);
+			vm.stopPrank();
+			_;
+		}
 
     function setUp() public {
         DeployDecentralizedStableCoin deploy = new DeployDecentralizedStableCoin();
@@ -35,11 +44,11 @@ contract DSCEngineTest is Test {
 		}
 
     function testGetUsdValue() public view {
-        uint256 ethAmount = 15e18;
-        uint256 expectedAmount = 30000e18;
-        uint256 actualUsd = dscEngine.getTokenUsdValue(weth, ethAmount);
+			uint256 ethAmount = 15e18;
+			uint256 expectedAmount = 30000e18;
+			uint256 actualUsd = dscEngine.getTokenUsdValue(weth, ethAmount);
 
-        assertEq(expectedAmount, actualUsd);
+			assertEq(expectedAmount, actualUsd);
     }
 
 		function testGetTokeAmountFromUsd() public view {
@@ -50,23 +59,15 @@ contract DSCEngineTest is Test {
 		}
 
     function testRvertsIfCollateralZero() public {
-        vm.expectRevert(DSCEngine.DSCEngine__MystBeMoreThanZero.selector);
-        dscEngine.depositCollateral(weth, 0);
-        vm.stopPrank();
+			vm.expectRevert(DSCEngine.DSCEngine__MystBeMoreThanZero.selector);
+			dscEngine.depositCollateral(weth, 0);
+			vm.stopPrank();
     }
 
 		function testRevertWithUnapprovedCollateral() public {
 			vm.expectRevert(DSCEngine.DSCEngine__TokenNotAllowed.selector);
 			dscEngine.depositCollateral(makeAddr("unapproved"), AMOUNT_COLLATERAL);
 			vm.stopPrank();
-		}
-
-		modifier depositedCollateral() {
-			vm.startPrank(USER);
-			ERC20Mock(weth).approve(address(dscEngine), AMOUNT_COLLATERAL);
-			dscEngine.depositCollateral(weth, AMOUNT_COLLATERAL);
-			vm.stopPrank();
-			_;
 		}
 
 		function testCanDepositCollateralAndGetAccountInfo() public depositedCollateral {
@@ -76,6 +77,16 @@ contract DSCEngineTest is Test {
 
 			assertEq(expectedTotalDscMinted, totalDscMinted);
 			assertEq(expectedCollateralValueInUsd, collateralValueInUd);
+		}
+
+		function testHealthFactorShouldRevertIfThereIsNotDscMinted() public depositedCollateral {
+			vm.expectRevert(DSCEngine.DSCEngine__MustHaveMintedDsc.selector);
+			dscEngine.getHealthFactor(USER);
+		}
+
+		function testMintDsc() public depositedCollateral {
+			dscEngine.mintDsc(AMOUNT_DSC_MINTED);
+			(uint256 totalDscMinted,) = dscEngine.getAccountInformation(USER);
 		}
 }
 
