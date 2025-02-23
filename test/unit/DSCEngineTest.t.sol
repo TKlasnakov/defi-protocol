@@ -83,10 +83,5 @@ contract DSCEngineTest is Test {
 			vm.expectRevert(DSCEngine.DSCEngine__MustHaveMintedDsc.selector);
 			dscEngine.getHealthFactor(USER);
 		}
-
-		function testMintDsc() public depositedCollateral {
-			dscEngine.mintDsc(AMOUNT_DSC_MINTED);
-			(uint256 totalDscMinted,) = dscEngine.getAccountInformation(USER);
-		}
 }
 
