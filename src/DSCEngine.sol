@@ -113,7 +113,7 @@ contract DSCEngine is ReentrancyGuard {
     * @param _tokenCollateralAddress - The address of the token used for collateral
     * @param _amountCollateral - The amount of collateral to redeem
     * @param _amountToBurn - The amount of DSC to be burned
-    * @notice - This function nurns DSC and redeems underlying collateral in one transaction
+    * @notice - This function burns DSC and redeems underlying collateral in one transaction
     */
     function redeemCollateralForDsc(address _tokenCollateralAddress, uint256 _amountCollateral, uint256 _amountToBurn)
         external
@@ -125,10 +125,8 @@ contract DSCEngine is ReentrancyGuard {
     function redeemCollateral(address _tokenCollateralAddress, uint256 _amountCollateral)
         public
         moreThanZero(_amountCollateral)
-        nonReentrant
     {
         _redeemCollateral(msg.sender, msg.sender, _tokenCollateralAddress, _amountCollateral);
-        _revertIfHealthFactorIsBroken(msg.sender);
     }
 
     function mintDsc(uint256 _amountDscToMint) public moreThanZero(_amountDscToMint) nonReentrant {

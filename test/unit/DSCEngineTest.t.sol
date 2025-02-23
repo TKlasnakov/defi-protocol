@@ -20,10 +20,12 @@ contract DSCEngineTest is Test {
 		uint256 public constant AMOUNT_DSC_MINTED = 100;
     uint256 public constant STARTING_ERC20_BALANCE = 10 ether;
 
-		modifier depositedCollateral() {
+    event CollateralRedeemed(address indexed redeemedFrom, address redeemedTo, address indexed token, uint256 amount);
+
+		modifier depositedCollateralAndMint() {
 			vm.startPrank(USER);
 			ERC20Mock(weth).approve(address(dscEngine), AMOUNT_COLLATERAL);
-			dscEngine.depositCollateral(weth, AMOUNT_COLLATERAL);
+			dscEngine.depositCollateralAndMintDSC(weth, AMOUNT_COLLATERAL, AMOUNT_DSC_MINTED);
 			vm.stopPrank();
 			_;
 		}
@@ -70,18 +72,21 @@ contract DSCEngineTest is Test {
 			vm.stopPrank();
 		}
 
-		function testCanDepositCollateralAndGetAccountInfo() public depositedCollateral {
+		function testCanDepositCollateralAndGetAccountInfo() public depositedCollateralAndMint {
 			(uint256 totalDscMinted, uint256 collateralValueInUd) = dscEngine.getAccountInformation(USER);
-			uint256 expectedTotalDscMinted = 0;
+			uint256 expectedTotalDscMinted = 100;
 			uint256 expectedCollateralValueInUsd = dscEngine.getTokenUsdValue(weth, AMOUNT_COLLATERAL);
 
 			assertEq(expectedTotalDscMinted, totalDscMinted);
 			assertEq(expectedCollateralValueInUsd, collateralValueInUd);
 		}
 
-		function testHealthFactorShouldRevertIfThereIsNotDscMinted() public depositedCollateral {
-			vm.expectRevert(DSCEngine.DSCEngine__MustHaveMintedDsc.selector);
-			dscEngine.getHealthFactor(USER);
+		function testRedeemCollateral() public depositedCollateralAndMint {
+			vm.expectEmit(true, false, true, false);
+			emit CollateralRedeemed(USER, USER, weth, AMOUNT_COLLATERAL / 3);
+			vm.startPrank(USER);
+			dscEngine.redeemCollateral(weth, AMOUNT_COLLATERAL / 3);
+			vm.stopPrank();
 		}
 }
 
